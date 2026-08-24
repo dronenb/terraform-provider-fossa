@@ -1,0 +1,39 @@
+{
+  "flatten_unions": true,
+  "merge_allof": true,
+  "collapse_primitive_oneOf": true,
+  "normalize_schema_required": true,
+  "dedupe_operation_ids": true,
+  "single_tag_operations": true,
+  "resolve_oneOf": [
+    {
+      "comment": "OIDC trust relationship create: org-scope and team-scope variants merged; scopeId becomes optional",
+      "path": "/paths/~1oidc~1trust-relationships/post/requestBody/content/application~1json/schema",
+      "strategy": "merge_all_branches"
+    },
+    {
+      "comment": "OIDC provider create: team-scope (scopeId required) and org-scope variants merged",
+      "path": "/paths/~1oidc~1providers/post/requestBody/content/application~1json/schema",
+      "strategy": "merge_all_branches"
+    },
+    {
+      "comment": "OIDC provider list/read response: org-scoped and team-scoped provider variants merged (teamName optional)",
+      "path": "/paths/~1oidc~1providers/get/responses/200/content/application~1json/schema/properties/results/items",
+      "strategy": "merge_all_branches"
+    },
+    {
+      "comment": "Issue filter create: filter variants (license/security/policy) merged into one flat object",
+      "path": "/paths/~1issue-filters/post/requestBody/content/application~1json/schema/properties/filter",
+      "strategy": "merge_all_branches"
+    },
+    {
+      "comment": "Issue filter update: same merge as create",
+      "path": "/paths/~1issue-filters~1{filterId}/put/requestBody/content/application~1json/schema/properties/filter",
+      "strategy": "merge_all_branches"
+    }
+  ],
+  "remove": [],
+  "normalize_json_type": true,
+  "drop_shadowed_ids": true,
+  "rename_boolean_has_props": true
+}

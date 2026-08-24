@@ -1,0 +1,143 @@
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
+
+# Maps FOSSA OpenAPI operations onto Terraform provider code specification
+# entities. Consumed by tfplugingen-openapi; output feeds
+# tfplugingen-framework. Run via `task gen:spec`.
+#
+# NOTE: the input spec is gen/openapi/swagger.json (patched), never the
+# upstream file directly.
+
+provider:
+  name: fossa
+
+resources:
+  # fossa_team
+  # NOTE: teamGroupIds is create-only upstream and never returned by reads;
+  # it would cause permanent drift, so it is excluded from the schema.
+  team:
+    create:
+      path: /teams
+      method: POST
+    read:
+      path: /v2/teams/{id}
+      method: GET
+    schema:
+      ignores:
+        - teamGroupIds
+
+  # fossa_team_members: membership managed as a full set via PUT (action=replace).
+  team_members:
+    create:
+      path: /teams/{id}/users
+      method: PUT
+    read:
+      path: /teams/{id}/members
+      method: GET
+    update:
+      path: /teams/{id}/users
+      method: PUT
+    delete:
+      path: /teams/{id}/users
+      method: PUT
+    schema:
+      ignores:
+        - action
+        - page
+        - pageSize
+        - totalCount
+        - results
+        - search
+
+  # fossa_oidc_provider
+  oidc_provider:
+    create:
+      path: /oidc/providers
+      method: POST
+    read:
+      path: /oidc/providers/{id}
+      method: GET
+    delete:
+      path: /oidc/providers/{id}
+      method: DELETE
+
+  # fossa_oidc_trust_relationship
+  oidc_trust_relationship:
+    create:
+      path: /oidc/trust-relationships
+      method: POST
+    read:
+      path: /oidc/trust-relationships/{id}
+      method: GET
+    update:
+      path: /oidc/trust-relationships/{id}
+      method: PUT
+    delete:
+      path: /oidc/trust-relationships/{id}
+      method: DELETE
+
+  # fossa_service_account: created via /users/service-accounts; refreshed via
+  # the user lookup endpoint (service accounts are users upstream). No delete
+  # endpoint exists.
+  service_account:
+    create:
+      path: /users/service-accounts
+      method: POST
+    read:
+      path: /users/{id}
+      method: GET
+    schema:
+      # NOTE: ignores reference OAS property names as written upstream
+      # (mixed conventions), not the snake_case Terraform attribute names.
+      ignores:
+        - demo
+        - super
+        - email_verified
+        - createdAt
+        - updatedAt
+        - bitbucketCloud
+        - github
+        - tokens
+        - teamUsers
+        - organization
+        - joined
+        - last_visit
+        - phone
+        - sso_only
+        - has_set_password
+        - terms_agreed
+        - install_admin
+        - userRole
+        - role
+        - enabled
+
+data_sources:
+  users:
+    read:
+      path: /v2/users
+      method: GET
+    schema:
+      ignores:
+        - page
+        - pageSize
+        - totalCount
+
+  teams:
+    read:
+      path: /teams
+      method: GET
+
+  roles:
+    read:
+      path: /roles
+      method: GET
+
+  team_members:
+    read:
+      path: /teams/{id}/members
+      method: GET
+    schema:
+      ignores:
+        - page
+        - pageSize
+        - totalCount

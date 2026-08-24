@@ -5,55 +5,61 @@ package provider
 
 import (
 	"context"
-	"net/http"
+	"os"
 
-	"github.com/hashicorp/terraform-plugin-framework/action"
+	"github.com/dronenb/terraform-provider-fossa/internal/fossaclient"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
-	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// Ensure ScaffoldingProvider satisfies various provider interfaces.
-var _ provider.Provider = &ScaffoldingProvider{}
-var _ provider.ProviderWithFunctions = &ScaffoldingProvider{}
-var _ provider.ProviderWithEphemeralResources = &ScaffoldingProvider{}
-var _ provider.ProviderWithActions = &ScaffoldingProvider{}
+const (
+	defaultEndpoint = "https://app.fossa.com/api"
+	apiTokenEnvVar  = "FOSSA_API_TOKEN"
+)
 
-// ScaffoldingProvider defines the provider implementation.
-type ScaffoldingProvider struct {
+// Ensure FossaProvider satisfies various provider interfaces.
+var _ provider.Provider = &FossaProvider{}
+
+// FossaProvider defines the provider implementation.
+type FossaProvider struct {
 	// version is set to the provider version on release, "dev" when the
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
 	version string
 }
 
-// ScaffoldingProviderModel describes the provider data model.
-type ScaffoldingProviderModel struct {
+// FossaProviderModel describes the provider data model.
+type FossaProviderModel struct {
+	APIToken types.String `tfsdk:"api_token"`
 	Endpoint types.String `tfsdk:"endpoint"`
 }
 
-func (p *ScaffoldingProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
-	resp.TypeName = "scaffolding"
+func (p *FossaProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+	resp.TypeName = "fossa"
 	resp.Version = p.version
 }
 
-func (p *ScaffoldingProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+func (p *FossaProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
+			"api_token": schema.StringAttribute{
+				MarkdownDescription: "FOSSA API token. Can also be set via the `FOSSA_API_TOKEN` environment variable.",
+				Optional:            true,
+				Sensitive:           true,
+			},
 			"endpoint": schema.StringAttribute{
-				MarkdownDescription: "Example provider attribute",
+				MarkdownDescription: "Base URL of the FOSSA API. Defaults to `https://app.fossa.com/api`.",
 				Optional:            true,
 			},
 		},
 	}
 }
 
-func (p *ScaffoldingProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
-	var data ScaffoldingProviderModel
+func (p *FossaProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+	var data FossaProviderModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 
@@ -61,48 +67,64 @@ func (p *ScaffoldingProvider) Configure(ctx context.Context, req provider.Config
 		return
 	}
 
-	// Configuration values are now available.
-	// if data.Endpoint.IsNull() { /* ... */ }
+	token := ""
+	if !data.APIToken.IsNull() {
+		token = data.APIToken.ValueString()
+	}
+	if token == "" {
+		token = os.Getenv(apiTokenEnvVar)
+	}
+	if token == "" {
+		resp.Diagnostics.AddError(
+			"Missing FOSSA API Token",
+			"Set the api_token provider attribute or the "+apiTokenEnvVar+" environment variable.",
+		)
+		return
+	}
 
-	// Example client configuration for data sources and resources
-	client := http.DefaultClient
+	endpoint := defaultEndpoint
+	if !data.Endpoint.IsNull() {
+		endpoint = data.Endpoint.ValueString()
+	}
+
+	cfg := fossaclient.NewConfiguration()
+	cfg.DefaultHeader["Authorization"] = "Bearer " + token
+	if endpoint != "" && endpoint != defaultEndpoint {
+		if len(cfg.Servers) > 0 {
+			cfg.Servers[0].URL = endpoint
+		} else {
+			cfg.Servers = fossaclient.ServerConfigurations{{URL: endpoint}}
+		}
+	}
+
+	client := fossaclient.NewAPIClient(cfg)
+
 	resp.DataSourceData = client
 	resp.ResourceData = client
 }
 
-func (p *ScaffoldingProvider) Resources(ctx context.Context) []func() resource.Resource {
+func (p *FossaProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewExampleResource,
+		NewTeamResource,
+		NewTeamMembersResource,
+		NewOIDCProviderResource,
+		NewOIDCTrustRelationshipResource,
+		NewServiceAccountResource,
 	}
 }
 
-func (p *ScaffoldingProvider) EphemeralResources(ctx context.Context) []func() ephemeral.EphemeralResource {
-	return []func() ephemeral.EphemeralResource{
-		NewExampleEphemeralResource,
-	}
-}
-
-func (p *ScaffoldingProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
+func (p *FossaProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		NewExampleDataSource,
-	}
-}
-
-func (p *ScaffoldingProvider) Functions(ctx context.Context) []func() function.Function {
-	return []func() function.Function{
-		NewExampleFunction,
-	}
-}
-
-func (p *ScaffoldingProvider) Actions(ctx context.Context) []func() action.Action {
-	return []func() action.Action{
-		NewExampleAction,
+		NewTeamsDataSource,
+		NewUsersDataSource,
+		NewRolesDataSource,
+		NewTeamMembersDataSource,
 	}
 }
 
 func New(version string) func() provider.Provider {
 	return func() provider.Provider {
-		return &ScaffoldingProvider{
+		return &FossaProvider{
 			version: version,
 		}
 	}

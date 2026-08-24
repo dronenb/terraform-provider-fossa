@@ -1,0 +1,15 @@
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
+
+# Configuration for openapi-generator-cli (pinned via openapitools.json).
+# Invoked by `task gen:client`; output is committed to the repository.
+generatorName: go
+outputDir: internal/fossaclient
+inputSpec: gen/openapi/swagger.json
+additionalProperties:
+  packageName: fossaclient
+  packageVersion: 0.1.0
+  generateInterfaces: true
+  enumClassPrefix: true
+  # Keep generated diffs stable across runs.
+  hideGenerationTimestamp: true

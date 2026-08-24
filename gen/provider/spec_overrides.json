@@ -1,0 +1,15 @@
+{
+  "comment": "Post-generation patches for provider_code_spec.json, applied by scripts/patch_provider_spec.py after tfplugingen-openapi. Keys are entity names; values map dotted attribute paths to schema-attribute patches.",
+  "entities": {
+    "service_account": {
+      "full_api_token": {
+        "sensitive": true,
+        "description": "Full-access API token returned only at creation time by FOSSA. Terraform stores it in state; it cannot be re-read later."
+      },
+      "push_only_api_token": {
+        "sensitive": true,
+        "description": "Push-only API token returned only at creation time by FOSSA. Terraform stores it in state; it cannot be re-read later."
+      }
+    }
+  }
+}

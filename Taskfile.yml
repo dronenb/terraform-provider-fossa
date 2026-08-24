@@ -1,0 +1,151 @@
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
+
+version: '3'
+
+vars:
+  OPENAPI_URL: https://app.fossa.com/api/api-docs/swagger.json
+  SPEC_UPSTREAM: gen/openapi/upstream/swagger.json
+  SPEC_PATCHED: gen/openapi/swagger.json
+  PATCH_RULES: gen/openapi/patches/rules.json
+  PROVIDER_SPEC_RAW: gen/provider/provider_code_spec.raw.json
+  PROVIDER_SPEC: gen/provider/provider_code_spec.json
+  PROVIDER_OVERRIDES: gen/provider/spec_overrides.json
+  GENERATOR_CONFIG: generator_config.yml
+  CLIENT_DIR: internal/fossaclient
+
+tasks:
+  default:
+    desc: fmt, lint, install, and generate docs
+    cmds:
+      - task: fmt
+      - task: lint
+      - task: install
+      - task: generate
+
+  build:
+    desc: build the provider binary
+    cmds:
+      - go build -v ./...
+
+  install:
+    desc: build and install the provider into GOPATH/bin
+    deps: [build]
+    cmds:
+      - go install -v ./...
+
+  fmt:
+    desc: format Go sources
+    cmds:
+      - gofmt -s -w -e .
+
+  lint:
+    desc: run golangci-lint
+    cmds:
+      - golangci-lint run
+
+  test:
+    desc: run unit tests
+    cmds:
+      - go test -v -cover -timeout=120s -parallel=10 ./...
+
+  testacc:
+    desc: run acceptance tests (requires TF_ACC=1 and real FOSSA credentials)
+    cmds:
+      - TF_ACC=1 go test -v -cover -timeout 120m ./...
+
+  generate:
+    desc: copyright headers, terraform fmt, provider docs
+    dir: tools
+    cmds:
+      - go generate ./...
+
+  # --- OpenAPI codegen pipeline -------------------------------------------
+
+  fetch-openapi:
+    desc: download the pristine FOSSA OAS into the repository
+    cmds:
+      - curl -fsSL '{{.OPENAPI_URL}}' -o {{.SPEC_UPSTREAM}}
+
+  patch-openapi:
+    desc: apply declarative patches to the vendored upstream OAS
+    deps: [fetch-openapi]
+    sources:
+      - scripts/patch_openapi.py
+      - '{{.PATCH_RULES}}'
+      - '{{.SPEC_UPSTREAM}}'
+    generates:
+      - '{{.SPEC_PATCHED}}'
+    cmds:
+      - python3 scripts/patch_openapi.py {{.SPEC_UPSTREAM}} {{.PATCH_RULES}} {{.SPEC_PATCHED}}
+
+  gen:spec:
+    desc: tfplugingen-openapi -> provider code specification
+    deps: [patch-openapi]
+    sources:
+      - '{{.GENERATOR_CONFIG}}'
+      - '{{.SPEC_PATCHED}}'
+    generates:
+      - '{{.PROVIDER_SPEC_RAW}}'
+    cmds:
+      - |
+        cd tools && go run github.com/hashicorp/terraform-plugin-codegen-openapi/cmd/tfplugingen-openapi generate \
+          --config ../{{.GENERATOR_CONFIG}} \
+          --output ../{{.PROVIDER_SPEC_RAW}} \
+          ../{{.SPEC_PATCHED}}
+
+  gen:patchspec:
+    desc: dedupe attributes and apply overrides to the provider spec
+    deps: [gen:spec]
+    sources:
+      - scripts/patch_provider_spec.py
+      - '{{.PROVIDER_OVERRIDES}}'
+      - '{{.PROVIDER_SPEC_RAW}}'
+    generates:
+      - '{{.PROVIDER_SPEC}}'
+    cmds:
+      - python3 scripts/patch_provider_spec.py {{.PROVIDER_SPEC_RAW}} {{.PROVIDER_OVERRIDES}} {{.PROVIDER_SPEC}}
+
+  gen:schema:
+    desc: tfplugingen-framework -> *_gen.go packages under internal/provider
+    deps: [gen:patchspec]
+    sources:
+      - '{{.PROVIDER_SPEC}}'
+    generates:
+      - internal/provider/**/*_gen.go
+    cmds:
+      - cd tools && go run github.com/hashicorp/terraform-plugin-codegen-framework/cmd/tfplugingen-framework generate all --input ../{{.PROVIDER_SPEC}} --output ../internal/provider
+
+  gen:client:
+    desc: openapi-generator-cli (pinned in openapitools.json) -> internal/fossaclient
+    deps: [patch-openapi]
+    sources:
+      - .openapi-generator-config.yaml
+      - '{{.SPEC_PATCHED}}'
+    generates:
+      - '{{.CLIENT_DIR}}/**/*.go'
+    cmds:
+      - rm -rf {{.CLIENT_DIR}}
+      - npx --yes @openapitools/openapi-generator-cli generate -c .openapi-generator-config.yaml
+      - rm -rf {{.CLIENT_DIR}}/docs {{.CLIENT_DIR}}/test {{.CLIENT_DIR}}/git_push.sh {{.CLIENT_DIR}}/go.mod {{.CLIENT_DIR}}/go.sum {{.CLIENT_DIR}}/.gitignore {{.CLIENT_DIR}}/.travis.yml {{.CLIENT_DIR}}/api/openapi.yaml
+      - go mod tidy
+
+  codegen:
+    desc: full regeneration chain (spec patch -> provider spec -> schemas -> client)
+    deps: [gen:schema, gen:client]
+
+  check-codegen:
+    desc: verify committed generated artifacts are up to date (CI gate)
+    deps: [codegen]
+    cmds:
+      - git diff --exit-code gen/ internal/fossaclient internal/provider
+
+  release:snapshot:
+    desc: goreleaser snapshot build for local verification
+    cmds:
+      - goreleaser release --snapshot --clean
+
+  release:
+    desc: cut a release (requires tags and signing env)
+    cmds:
+      - goreleaser release --clean

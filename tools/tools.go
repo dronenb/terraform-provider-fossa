@@ -7,6 +7,8 @@ package tools
 
 import (
 	_ "github.com/hashicorp/copywrite"
+	_ "github.com/hashicorp/terraform-plugin-codegen-framework/cmd/tfplugingen-framework"
+	_ "github.com/hashicorp/terraform-plugin-codegen-openapi/cmd/tfplugingen-openapi"
 	_ "github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs"
 )
 
@@ -19,4 +21,4 @@ import (
 //go:generate terraform fmt -recursive ../examples/
 
 // Generate documentation.
-//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --provider-dir .. -provider-name scaffolding
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --provider-dir .. -provider-name fossa
