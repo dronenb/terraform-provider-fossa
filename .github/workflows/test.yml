@@ -42,7 +42,7 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
-      - uses: arduino/setup-task@b91d0d2c963f6ad83e84dc7c1886a44349afc887 # v2.0.0
+      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
         with:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
