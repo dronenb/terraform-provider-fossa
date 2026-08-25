@@ -1,64 +1,145 @@
-# Terraform Provider Scaffolding (Terraform Plugin Framework)
+# Terraform Provider for FOSSA
 
-_This template repository is built on the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework). The template repository built on the [Terraform Plugin SDK](https://github.com/hashicorp/terraform-plugin-sdk) can be found at [terraform-provider-scaffolding](https://github.com/hashicorp/terraform-provider-scaffolding). See [Which SDK Should I Use?](https://developer.hashicorp.com/terraform/plugin/framework-benefits) in the Terraform documentation for additional information._
-
-This repository is a *template* for a [Terraform](https://www.terraform.io) provider. It is intended as a starting point for creating Terraform providers, containing:
-
-- A resource and a data source (`internal/provider/`),
-- Examples (`examples/`) and generated documentation (`docs/`),
-- Miscellaneous meta files.
-
-These files contain boilerplate code that you will need to edit to create your own Terraform provider. Tutorials for creating Terraform providers can be found on the [HashiCorp Developer](https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework) platform. _Terraform Plugin Framework specific guides are titled accordingly._
-
-Please see the [GitHub template repository documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/creating-a-repository-from-a-template) for how to create a new repository from this template on GitHub.
-
-Once you've written your provider, you'll want to [publish it on the Terraform Registry](https://developer.hashicorp.com/terraform/registry/providers/publishing) so that others can use it.
+A [Terraform](https://www.terraform.io) provider for managing
+[FOSSA](https://fossa.com) organizations, built with the
+[Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework)
+and generated from the official FOSSA OpenAPI specification.
 
 ## Requirements
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
 - [Go](https://golang.org/doc/install) >= 1.24
-
-## Building the Provider
-
-1. Clone the repository
-1. Enter the repository directory
-1. Build the provider using the Go `install` command:
-
-```shell
-go install
-```
-
-## Adding Dependencies
-
-This provider uses [Go modules](https://github.com/golang/go/wiki/Modules).
-Please see the Go documentation for the most up to date information about using Go modules.
-
-To add a new dependency `github.com/author/dependency` to your Terraform provider:
-
-```shell
-go get github.com/author/dependency
-go mod tidy
-```
-
-Then commit the changes to `go.mod` and `go.sum`.
+- A FOSSA API token (with admin permissions for the target organization)
 
 ## Using the Provider
 
-Fill this in for each provider
+Configure the provider with a FOSSA API token, either via the `api_token`
+attribute or the `FOSSA_API_TOKEN` environment variable:
+
+```hcl
+provider "fossa" {
+  # api_token = "..." # or set FOSSA_API_TOKEN
+}
+```
+
+### Example: Team and Membership
+
+```hcl
+data "fossa_roles" "all" {}
+
+resource "fossa_team" "platform" {
+  name             = "Platform"
+  default_role_id  = data.fossa_roles.all.roles[0].id
+  auto_add_users   = false
+}
+
+resource "fossa_team_members" "platform" {
+  id = fossa_team.platform.id
+
+  users = [
+    {
+      id      = 12345
+      role_id = data.fossa_roles.all.roles[0].id
+    },
+    {
+      id      = 67890
+      role_id = data.fossa_roles.all.roles[0].id
+    },
+  ]
+}
+```
+
+> **Note:** `fossa_team_members` fully manages the membership of the team:
+> users not listed in the configuration are removed from the team.
+
+### Example: OIDC Provider and Trust Relationship
+
+```hcl
+resource "fossa_oidc_provider" "example" {
+  issuer   = "https://token.actions.githubusercontent.com"
+  scope    = "organization"
+}
+
+resource "fossa_oidc_trust_relationship" "example" {
+  provider_id = fossa_oidc_provider.example.id
+  user_id     = 12345
+  scope       = "team"
+  scope_id    = fossa_team.platform.id
+
+  audiences = ["https://fossa.example.com"]
+
+  required_claims = [
+    {
+      claim         = "sub"
+      value         = "repo:acme/widget:environment:prod"
+      has_wildcards = false
+    },
+  ]
+}
+```
+
+### Example: Service Account
+
+```hcl
+resource "fossa_service_account" "ci" {
+  username            = "ci-bot"
+  full_name           = "CI automation"
+  has_full_api_token  = true
+}
+
+output "ci_api_token" {
+  value     = fossa_service_account.ci.full_api_token
+  sensitive = true
+}
+```
+
+> **Note:** The FOSSA API does not support updating or deleting service
+> accounts. Destroying `fossa_service_account` only removes it from state;
+> deactivate or remove the account manually in FOSSA. API tokens are only
+> shown once at creation time.
 
 ## Developing the Provider
 
-If you wish to work on the provider, you'll first need [Go](http://www.golang.org) installed on your machine (see [Requirements](#requirements) above).
-
-To compile the provider, run `go install`. This will build the provider and put the provider binary in the `$GOPATH/bin` directory.
-
-To generate or update documentation, run `make generate`.
-
-In order to run the full suite of Acceptance tests, run `make testacc`.
-
-*Note:* Acceptance tests create real resources, and often cost money to run.
+The provider is generated from the [FOSSA OpenAPI
+specification](https://app.fossa.com/api/api-docs/swagger.json) using
+HashiCorp's code generation pipeline. Everything is driven by
+[go-task](https://taskfile.dev):
 
 ```shell
-make testacc
+brew install go-task golangci-lint goreleaser node
+```
+
+| Command            | Description                                              |
+| ------------------ | -------------------------------------------------------- |
+| `task build`       | Build the provider binary                                |
+| `task test`        | Run unit tests                                           |
+| `task lint`        | Run golangci-lint                                        |
+| `task generate`    | Regenerate spec → schemas → client → docs from upstream  |
+| `task check-codegen` | Fail if committed generated artifacts are out of date  |
+| `task testacc`     | Run acceptance tests (requires `FOSSA_API_TOKEN`)        |
+
+### Code Generation Pipeline
+
+1. `gen/openapi/upstream/swagger.json` — pristine upstream FOSSA spec.
+2. `scripts/patch_openapi.py` + `gen/openapi/patches/rules.json` — apply all
+   OpenAPI fixes (union flattening, `allOf` merging, schema normalization) to
+   produce `gen/openapi/swagger.json`.
+3. `tfplugingen-openapi` — map the patched spec onto Terraform entities per
+   `generator_config.yml`, producing `gen/provider/provider_code_spec.raw.json`.
+4. `scripts/patch_provider_spec.py` + `gen/provider/spec_overrides.json` —
+   dedupe merged attributes and apply sensitive-flag overrides.
+5. `tfplugingen-framework` — generate resource/data source scaffolding into
+   `internal/provider/*_gen.go` packages (committed; do not edit).
+6. `openapi-generator-cli` — generate the Go API client into
+   `internal/fossaclient` (committed; do not edit).
+
+Hand-written glue lives in `internal/provider/*.go` (non-`_gen.go` files).
+
+## Releasing
+
+Releases are built and published with GoReleaser:
+
+```shell
+task release:snapshot  # local dry-run build
+task release           # publish a release (requires GITHUB_TOKEN)
 ```
