@@ -6,9 +6,13 @@ on:
   issue_comment:
     types: [created]
 
+permissions:
+  issues: write
+  pull-requests: write
+
 jobs:
   issue_comment_triage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       # issue_comment events are triggered by comments on issues and pull requests. Checking the
       # value of github.event.issue.pull_request tells us whether the issue is an issue or is
@@ -18,4 +22,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: 'Remove waiting-response on comment'
-        run: gh ${{ env.COMMAND }} edit ${{ github.event.issue.html_url }} --remove-label waiting-response
+        run: gh "$COMMAND" edit "$ISSUE_URL" --remove-label waiting-response
+        env:
+          ISSUE_URL: ${{ github.event.issue.html_url }}
