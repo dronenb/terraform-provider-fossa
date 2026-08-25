@@ -47140,6 +47140,44 @@
       }
      }
     }
+   },
+   "delete": {
+    "operationId": "deleteUser",
+    "tags": [
+     "Users"
+    ],
+    "summary": "Delete a user",
+    "description": "Deletes a user account. For service accounts this is the only way to remove them.",
+    "security": [
+     {
+      "ApiToken": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      },
+      "description": "The user ID"
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "No Content"
+     },
+     "403": {
+      "description": "Forbidden"
+     },
+     "404": {
+      "description": "Not Found"
+     },
+     "500": {
+      "description": "Internal Server Error"
+     }
+    }
    }
   },
   "/users/service-accounts": {

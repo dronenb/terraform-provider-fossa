@@ -26,12 +26,8 @@ func NewServiceAccountResource() resource.Resource {
 
 // ServiceAccountResource manages a FOSSA service account.
 //
-// The FOSSA API does not support updating or deleting service accounts:
-//
-//   - Destroy removes the resource from Terraform state only. The service
-//     account must be deactivated or removed manually in FOSSA.
-//   - Attribute changes other than username/email/full_name require
-//     replacement of the whole account.
+// The FOSSA API does not support updating service accounts. Changes to
+// username, email, or full_name require replacement of the whole account.
 type ServiceAccountResource struct {
 	client *fossaclient.APIClient
 }
@@ -154,12 +150,17 @@ func (r *ServiceAccountResource) Update(ctx context.Context, req resource.Update
 	)
 }
 
-// Delete is a state-only removal: the FOSSA API does not expose service
-// account deletion. See the resource documentation above.
+// Delete removes the service account via the user delete endpoint.
 func (r *ServiceAccountResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	resp.Diagnostics.AddWarning(
-		"Service Account Not Deleted",
-		"The FOSSA API does not support deleting service accounts. The service account has been removed "+
-			"from Terraform state but may still exist in FOSSA; deactivate or remove it manually if needed.",
-	)
+	var data serviceaccountgen.ServiceAccountModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	httpResp, err := r.client.UsersAPI.DeleteUser(ctx, int32(data.Id.ValueInt64())).Execute()
+	if err != nil && !isNotFound(httpResp, err) {
+		resp.Diagnostics.AddError("Client Error", apiError("delete service account", err))
+		return
+	}
 }

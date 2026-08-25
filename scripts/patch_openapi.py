@@ -487,6 +487,20 @@ def apply_remove_rule(spec, pointer, removed):
 # Main
 # ---------------------------------------------------------------------------
 
+def transform_add_operations(spec, rules, stats):
+    """Add operations that are functional but missing from the published spec."""
+    for entry in rules.get("add_operations", []):
+        path = entry["path"]
+        method = entry["method"]
+        op = entry["operation"]
+        paths = spec.setdefault("paths", {})
+        path_item = paths.setdefault(path, {})
+        if method in path_item:
+            raise PatchError(f"add_operations: {method.upper()} {path} already exists")
+        path_item[method] = op
+        stats["added_ops"] = stats.get("added_ops", 0) + 1
+
+
 def main(argv):
     if len(argv) != 4:
         print(__doc__)
@@ -548,6 +562,8 @@ def main(argv):
 
     for pointer in rules.get("remove", []):
         apply_remove_rule(spec, pointer, removed)
+
+    transform_add_operations(spec, rules, stats)
 
     with open(output_path, "w", encoding="utf-8") as fh:
         json.dump(spec, fh, indent=1, ensure_ascii=False)

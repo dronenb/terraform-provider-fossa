@@ -333,6 +333,7 @@ Class | Method | HTTP request | Description
 *TeamsAPI* | [**UpdateTeamProjects**](docs/TeamsAPI.md#updateteamprojects) | **Put** /teams/{id}/projects | 
 *TeamsAPI* | [**UpdateTeamUsers**](docs/TeamsAPI.md#updateteamusers) | **Put** /teams/{id}/users | 
 *UsersAPI* | [**CreateServiceAccount**](docs/UsersAPI.md#createserviceaccount) | **Post** /users/service-accounts | 
+*UsersAPI* | [**DeleteUser**](docs/UsersAPI.md#deleteuser) | **Delete** /users/{id} | Delete a user
 *UsersAPI* | [**GetAllUsers**](docs/UsersAPI.md#getallusers) | **Get** /users | 
 *UsersAPI* | [**GetAllUsersV2**](docs/UsersAPI.md#getallusersv2) | **Get** /v2/users | 
 *UsersAPI* | [**GetUser**](docs/UsersAPI.md#getuser) | **Get** /users/{id} | 
